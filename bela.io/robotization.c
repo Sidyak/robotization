@@ -37,8 +37,8 @@ int gSampleCount = 0;
 // These variables used internally in the example:
 int gFFTSize = 2048;
 // phase parameters
-int Ha = gFFTSize/4-0; /* analysis hopsize */
-int Hs = gFFTSize/4;   /* synthisis hopsize */
+static const int Ha = 441;//(1<<gFFTSize)/4-0; /* analysis hopsize */
+static const int Hs = 441;//(1<<gFFTSize)/4;   /* synthisis hopsize */
 int gHopSize = Hs;
 int gPeriod = gHopSize;
 float modPhase = 0.f;

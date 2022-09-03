@@ -49,8 +49,8 @@ float modPhase = 0.f; // good value is -180...0...180
 // These variables used internally in the example:
 static const int gFFTSize = 10;
 // phase parameters
-static const int Ha = (1<<gFFTSize)/4-0; /* analysis hopsize */
-static const int Hs = (1<<gFFTSize)/4;   /* synthisis hopsize */
+static const int Ha = 441;//(1<<gFFTSize)/4-0; /* analysis hopsize */
+static const int Hs = 441;//(1<<gFFTSize)/4;   /* synthisis hopsize */
 int gHopSize = Hs;
 int gPeriod = gHopSize;
 float gFFTScaleFactor = 0;
