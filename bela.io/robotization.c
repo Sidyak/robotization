@@ -35,7 +35,7 @@ int gOutputBufferReadPointer = 0;
 int gSampleCount = 0;
 
 // These variables used internally in the example:
-int gFFTSize = 2048;
+int gFFTSize = 1024;
 // phase parameters
 static const int Ha = 441;//(1<<gFFTSize)/4-0; /* analysis hopsize */
 static const int Hs = 441;//(1<<gFFTSize)/4;   /* synthisis hopsize */
@@ -123,7 +123,7 @@ bool setup(BelaContext* context, void* userData)
 
     // Calculate a Hann window
     for(int n = 0; n < gFFTSize; n++) {
-        gWindowBuffer[n] = 0.95f * (1.0f - cosf(2.0f * M_PI * (float)n / (float)(gFFTSize)));
+        gWindowBuffer[n] = 0.5f * (1.0f - cosf(2.0f * M_PI * (float)n / (float)(gFFTSize)));
     }
 
     // Initialise auxiliary tasks

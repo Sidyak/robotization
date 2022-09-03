@@ -1,7 +1,7 @@
 /*
 Author: Kim Radmacher
 
-Date: 04.03.2022
+Date: 03.09.2022
 
 Description:
   FFT based robotization. Algorithm is based on DAFX - U. Zoelzer page 287 ff.
@@ -130,7 +130,7 @@ bool setup(void)
     // Calculate a Hann window
     for(int n = 0; n < (1<<gFFTSize); n++)
     {
-        gWindowBuffer[n] = 0.95f * (1.0f - cosf(2.0f * M_PI * (float)n / (float)((1<<gFFTSize))));
+        gWindowBuffer[n] = 0.5f * (1.0f - cosf(2.0f * M_PI * (float)n / (float)((1<<gFFTSize))));
     }
 
     return true;
