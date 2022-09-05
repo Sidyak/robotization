@@ -18,10 +18,11 @@ The Bela software is distributed under the GNU Lesser General Public License
 */
 
 #include <Bela.h>
-#include <ne10/NE10.h>                    // NEON FFT library
-#include <Midi.h>
+#include <libraries/ne10/NE10.h>
+//#include <libraries/Midi/Midi.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #define BUFFER_SIZE (16384)
 
@@ -37,11 +38,12 @@ int gSampleCount = 0;
 // These variables used internally in the example:
 int gFFTSize = 1024;
 // phase parameters
-static const int Ha = 441;//(1<<gFFTSize)/4-0; /* analysis hopsize */
-static const int Hs = 441;//(1<<gFFTSize)/4;   /* synthisis hopsize */
+static const int Ha = 441;//(gFFTSize)/4-0; /* analysis hopsize */
+static const int Hs = 441;//(gFFTSize)/4;   /* synthisis hopsize */
 int gHopSize = Hs;
 int gPeriod = gHopSize;
 float modPhase = 0.f;
+float prevModPhase = 0.f;
 
 float gFFTScaleFactor = 0;
 float *gInputAudio = NULL;
@@ -68,6 +70,14 @@ AuxiliaryTask gFFTTask;
 int gFFTInputBufferPointer = 0;
 int gFFTOutputBufferPointer = 0;
 
+// cpu cycle read
+static inline uint32_t ccnt_read (void)
+{
+  uint32_t cc = 0;
+  __asm__ volatile ("mrc p15, 0, %0, c9, c13, 0":"=r" (cc));
+  return cc;
+}
+
 // instantiate the scope
 //Scope scope;
 
@@ -89,7 +99,7 @@ bool setup(BelaContext* context, void* userData)
         return false;
     }
 
-    gFFTScaleFactor = 1.0f / (float)gFFTSize;
+    gFFTScaleFactor = (float) Hs / (float)gFFTSize;
     gOutputBufferWritePointer = Hs;
     gOutputBufferReadPointer = 0;
 
@@ -146,6 +156,10 @@ bool setup(BelaContext* context, void* userData)
 // This function handles the FFT based robotization
 void process_robotization(float *inBuffer, int inWritePointer, float *outBuffer, int outWritePointer)
 {
+    uint32_t t0 = ccnt_read();
+    uint32_t t1 = t0;//ccnt_read();       
+    //rt_printf("%u\n", t1-t0);
+
     // Copy buffer into FFT input
     int pointer = (inWritePointer - gFFTSize + BUFFER_SIZE) % BUFFER_SIZE;
     for(int n = 0; n < gFFTSize; n++) {
@@ -162,27 +176,28 @@ void process_robotization(float *inBuffer, int inWritePointer, float *outBuffer,
 
     for(int n = 0; n < gFFTSize; n++) {
         amplitude[n] = sqrtf(frequencyDomain[n].r * frequencyDomain[n].r + frequencyDomain[n].i * frequencyDomain[n].i);
-        psi[n] = modPhase*(float)n
+        phi[n] = atan2f((float)frequencyDomain[n].i, (float)frequencyDomain[n].r);
+        phi[n] = (modPhase) + (1.f-modPhase)*phi[n];
     }
     
     for(int n = 0; n < gFFTSize; n++) {
-        frequencyDomain[n].r = cosf(psi[n]) * amplitude[n];
-        frequencyDomain[n].i = sinf(psi[n]) * amplitude[n];
+        frequencyDomain[n].r = cosf(phi[n]) * amplitude[n];
+        frequencyDomain[n].i = sinf(phi[n]) * amplitude[n];
     }
 
     ne10_fft_c2c_1d_float32_neon (timeDomainOut, frequencyDomain, cfg, 1);
     
     for(int n = 0; n < gFFTSize; n++)
     {
-        timeDomainOut[n].r = timeDomainOut[n].r * gWindowBuffer[n];
+        timeDomainOut[n].r = gFFTScaleFactor * timeDomainOut[n].r * gWindowBuffer[n];
     }
 
     // Overlap-and-add timeDomainOut into the output buffer
     pointer = outWritePointer;
     int n;
-    for(n = 0; n < (1<<gFFTSize); n++)
+    for(n = 0; n < gFFTSize; n++)
     {
-        outBuffer[pointer] += (int16_t)((float)timeDomainIn[n].r);
+        outBuffer[pointer] += timeDomainOut[n].r;
         
         //if(isnan(outBuffer[pointer]))
         //    rt_printf("outBuffer OLA\n");
@@ -191,6 +206,9 @@ void process_robotization(float *inBuffer, int inWritePointer, float *outBuffer,
         if(pointer >= BUFFER_SIZE)
             pointer = 0;
     }
+
+    t1 = ccnt_read();
+    rt_printf("\rmodPhase = %f ####  %u cycles process", modPhase, t1-t0);    
 }
 
 // Function to process the FFT in a thread at lower priority
@@ -204,8 +222,51 @@ void render(BelaContext *context, void *userData)
     for(unsigned int n = 0; n < context->audioFrames; n++) {
         if(gAudioFramesPerAnalogFrame && !(n % gAudioFramesPerAnalogFrame)) {
             // read analog inputs and update modPhase value
-            modPhase = (int)floor(map(analogRead(context, n/gAudioFramesPerAnalogFrame, gAnalogIn), 0, 1, -180, 180));
-            //modPhase = 0;
+            if(n==0)
+            {
+                // read analog inputs and update modPhase value
+#if 0
+                modPhase = (int)floor(map(analogRead(context, n/gAudioFramesPerAnalogFrame, gAnalogIn), 0, 1, -180, 180));
+
+                if(modPhase < 0)
+                {
+                    if(modPhase < prevModPhase-10)
+                    {
+                        prevModPhase -= 10;
+                    }
+                    else if(modPhase >= prevModPhase+10)
+                    {
+                        prevModPhase += 10;
+                    }
+                }
+                else
+                {
+                    if(modPhase > prevModPhase+10)
+                    {
+                        prevModPhase += 10;
+                    }
+                    else if(modPhase <= prevModPhase-10)
+                    {
+                        prevModPhase -= 10;
+                    }
+                }
+
+                modPhase = prevModPhase;
+#else
+                modPhase = (float)floor(map(analogRead(context, n/gAudioFramesPerAnalogFrame, gAnalogIn), 0, 1, 0, 110))/100.f;
+                if(modPhase >= prevModPhase+0.1f)
+                {
+                    prevModPhase += 0.1f;
+                }
+                else if(modPhase <= prevModPhase-0.1f)
+                {
+                    prevModPhase -= 0.1f;
+                }
+
+                modPhase = prevModPhase;
+#endif
+
+            }
         }
 
         // Read audio inputs
